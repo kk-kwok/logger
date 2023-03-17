@@ -1,3 +1,29 @@
+v2.0.1 (2022-07-07)
+-----------
+Removed: exported var ZapLogger has been removed
+
+v2.0.0 (2022-07-07)
+-----------
+Refactor: upgrade mod version to v2, split gorm and echo logger to standalone pkg
+
+
+v0.4.4 (2022-02-21)
+-----------
+Feature: interface expose `SetLevel()`
+
+
+v0.4.2 (2022-02-16)
+-----------
+Change: `With()` signature changed to allow varadic params
+Feature: With now allow chain call like `.With().With().With()`
+
+
+v0.4.0 (2021-6-15)
+-----------
+Feature: level color
+Feature: short time
+
+
 v0.3.4 (2020-12-04)
 -----------
 Change: echo log ignore /metrics

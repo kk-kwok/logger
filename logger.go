@@ -1,47 +1,55 @@
 package logger
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"time"
-
-	gormlogger "gorm.io/gorm/logger"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 type Logger interface {
+	Debug(args ...interface{})
 	Info(args ...interface{})
 	Warn(args ...interface{})
 	Error(args ...interface{})
-	Debug(args ...interface{})
 	Fatal(args ...interface{})
 
-	Infof(fmt string, args ...interface{})
-	Warnf(fmt string, args ...interface{})
-	Errorf(fmt string, args ...interface{})
-	Debugf(fmt string, args ...interface{})
-	Fatalf(fmt string, args ...interface{})
+	// nolint: gofumpt
+	Debugf(template string, args ...interface{})
+	Infof(template string, args ...interface{})
+	Warnf(template string, args ...interface{})
+	Errorf(template string, args ...interface{})
+	Fatalf(template string, args ...interface{})
+
+	// nolint: gofumpt
+	Debugw(msg string, keysAndValues ...interface{})
+	Infow(msg string, keysAndValues ...interface{})
+	Warnw(msg string, keysAndValues ...interface{})
+	Errorw(msg string, keysAndValues ...interface{})
+	Fatalw(msg string, keysAndValues ...interface{})
+
+	// nolint: gofumpt
+	Log(level Level, args ...interface{})
+	Logf(level Level, template string, args ...interface{})
+	Logw(level Level, msg string, keysAndValues ...interface{})
+	With(keyValues ...interface{}) Logger
+	SetLevel(level Level)
 }
 
 type logger struct {
-	config *Config
-	logger *zap.SugaredLogger
+	config    *Config
+	logger    *zap.SugaredLogger
+	zapLogger *zap.Logger
 }
-
-var ZapLogger *zap.Logger
 
 var (
 	defaultConfig = NewDefaultConfig()
 	l             = newLogger(defaultConfig)
-	gormLogger    = NewGormLogger(context.Background(), l, 5*time.Second)
 )
 
 func SetConfig(config *Config) {
 	l = newLogger(config)
-	gormLogger = NewGormLogger(context.Background(), l, 5*time.Second)
 }
 
 func SetLevel(level Level) {
@@ -52,56 +60,34 @@ func GetLevel() Level {
 	return l.Level()
 }
 
+func SetOutputPaths(outputPaths []string) {
+	l.config.OutputPaths = outputPaths
+	l = newLogger(l.config)
+}
+
+func NewLogger(config *Config) Logger {
+	l := newLogger(config)
+	return l
+}
+
 func GetLogger() Logger {
 	return l
 }
 
-func GetGormLogger() gormlogger.Interface {
-	return gormLogger
-}
-
 func newLogger(config *Config) *logger {
-	encoderConfig := NewCustomEncoderConfig()
-	zapConfig := &zap.Config{
-		Level:             zap.NewAtomicLevelAt(zapcore.Level(config.Level)),
-		Development:       config.Development,
-		DisableCaller:     config.DisableCaller,
-		DisableStacktrace: config.DisableStacktrace,
-		Sampling:          &zap.SamplingConfig{Initial: 100, Thereafter: 100},
-		Encoding:          config.Encoding,
-		EncoderConfig:     encoderConfig,
-		OutputPaths:       config.OutputPaths,
-		InitialFields:     config.InitialFields,
-	}
+	config.buildZapConfig()
 
-	zapLogger, err := zapConfig.Build()
+	zapLogger, err := config.zapConfig.Build()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error on build zap logger (%s)", err)
 		return nil
 	}
 	zapLogger = zapLogger.WithOptions(zap.AddCallerSkip(config.CallerSkip))
-	config.zapConfig = zapConfig
-	ZapLogger = zapLogger
 
 	return &logger{
-		logger: zapLogger.Sugar(),
-		config: config,
-	}
-}
-
-func NewCustomEncoderConfig() zapcore.EncoderConfig {
-	return zapcore.EncoderConfig{
-		TimeKey:        "ts",
-		LevelKey:       "level",
-		NameKey:        "logger",
-		CallerKey:      "caller",
-		MessageKey:     "msg",
-		StacktraceKey:  "stacktrace",
-		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.LowercaseLevelEncoder,
-		EncodeTime:     zapcore.ISO8601TimeEncoder,
-		EncodeDuration: zapcore.SecondsDurationEncoder,
-		EncodeCaller:   zapcore.ShortCallerEncoder,
+		logger:    zapLogger.Sugar(),
+		zapLogger: zapLogger,
+		config:    config,
 	}
 }
 
@@ -198,6 +184,71 @@ func (l *logger) Fatalw(msg string, keysAndValues ...interface{}) {
 	l.logger.Fatalw(msg, keysAndValues...)
 }
 
+func (l *logger) Log(level Level, args ...interface{}) {
+	// nolint: exhaustive
+	switch level {
+	case DebugLevel:
+		l.logger.Debug(args...)
+	case InfoLevel:
+		l.logger.Info(args...)
+	case WarnLevel:
+		l.logger.Warn(args...)
+	case ErrorLevel:
+		l.logger.Error(args...)
+	default:
+		l.logger.Info(args...)
+	}
+}
+
+func (l *logger) Logf(level Level, template string, args ...interface{}) {
+	// nolint: exhaustive
+	switch level {
+	case DebugLevel:
+		l.logger.Debugf(template, args...)
+	case InfoLevel:
+		l.logger.Infof(template, args...)
+	case WarnLevel:
+		l.logger.Warnf(template, args...)
+	case ErrorLevel:
+		l.logger.Errorf(template, args...)
+	default:
+		l.logger.Infof(template, args...)
+	}
+}
+
+func (l *logger) Logw(level Level, msg string, keysAndValues ...interface{}) {
+	// nolint: exhaustive
+	switch level {
+	case DebugLevel:
+		l.logger.Debugw(msg, keysAndValues...)
+	case InfoLevel:
+		l.logger.Infow(msg, keysAndValues...)
+	case WarnLevel:
+		l.logger.Warnw(msg, keysAndValues...)
+	case ErrorLevel:
+		l.logger.Errorw(msg, keysAndValues...)
+	default:
+		l.logger.Infow(msg, keysAndValues...)
+	}
+}
+
 func (l *logger) Sync() error {
 	return l.logger.Sync()
+}
+
+func (l *logger) With(keyValues ...interface{}) Logger {
+	if len(keyValues) == 0 {
+		return l
+	}
+
+	newLogger := &logger{
+		config:    l.config.clone(),
+		logger:    l.logger.With(keyValues...),
+		zapLogger: l.zapLogger,
+	}
+	return newLogger
+}
+
+func (l *logger) GetZapLogger() *zap.Logger {
+	return l.zapLogger
 }

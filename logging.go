@@ -1,5 +1,9 @@
 package logger
 
+import (
+	"go.uber.org/zap"
+)
+
 func Debug(args ...interface{}) {
 	l.Debug(args...)
 }
@@ -86,4 +90,22 @@ func Fatalw(msg string, keysAndValues ...interface{}) {
 
 func Sync() error {
 	return l.Sync()
+}
+
+func With(keyValues ...interface{}) Logger {
+	if len(keyValues) == 0 {
+		return l
+	}
+
+	zaplogger := l.logger.With(keyValues...).Desugar().WithOptions(zap.AddCallerSkip(-1))
+
+	newLogger := &logger{
+		config: l.config.clone(),
+		logger: zaplogger.Sugar(),
+	}
+	return newLogger
+}
+
+func GetZapLogger() *zap.Logger {
+	return l.GetZapLogger()
 }
